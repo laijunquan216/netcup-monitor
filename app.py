@@ -171,7 +171,6 @@ def get_daily_trends(conn, server_list):
     trends = {}
     today = datetime.date.today()
     
-    # 生成过去7天的日期列表
     for i in range(6, -1, -1):
         d = today - datetime.timedelta(days=i)
         dates.append(d.strftime('%m-%d'))
@@ -180,53 +179,42 @@ def get_daily_trends(conn, server_list):
         name = s['name']
         trends[name] = {'health': [], 'traffic': []}
         
-        # 优化查询：一次性查出该服务器过去7天的所有事件和流量记录
         start_7d = (datetime.datetime.now() - datetime.timedelta(days=7)).timestamp()
-        
-        # 1. 流量趋势
-        # 简单算法：每天最后一刻的总量 - 每天开始时的总量
-        # 这里为了性能，取每条记录，按天归档
         c = conn.cursor()
         c.execute("SELECT timestamp, up_total, dl_total FROM traffic_log WHERE server_name=? AND timestamp >= ? ORDER BY timestamp ASC", (name, start_7d))
         logs = c.fetchall()
         
-        # 2. 状态事件
         c.execute("SELECT start_time, end_time FROM state_events WHERE server_name=? AND state='low' AND (end_time >= ? OR end_time IS NULL)", (name, start_7d))
         events = c.fetchall()
         
-        # 按天计算
         for i in range(6, -1, -1):
             target_date = today - datetime.timedelta(days=i)
             day_start = datetime.datetime.combine(target_date, datetime.time.min).timestamp()
             day_end = datetime.datetime.combine(target_date, datetime.time.max).timestamp()
             
-            # 计算当日流量增量
             day_logs = [l for l in logs if day_start <= l[0] <= day_end]
             if day_logs:
-                # 处理重启归零：如果后一个比前一个小，说明重启了，直接加
                 daily_sum = 0
                 prev_total = day_logs[0][1] + day_logs[0][2]
                 for j in range(1, len(day_logs)):
                     curr_total = day_logs[j][1] + day_logs[j][2]
                     diff = curr_total - prev_total
                     if diff >= 0: daily_sum += diff
-                    else: daily_sum += curr_total # 重启情况
+                    else: daily_sum += curr_total
                     prev_total = curr_total
-                trends[name]['traffic'].append(round(daily_sum / 1024 / 1024 / 1024, 2)) # GB
+                trends[name]['traffic'].append(round(daily_sum / 1024 / 1024 / 1024, 2))
             else:
                 trends[name]['traffic'].append(0)
             
-            # 计算当日限速时长 (小时)
             day_throttled = 0
             for start, end in events:
                 e_end = end if end else time.time()
-                # 计算交集
                 overlap_start = max(start, day_start)
                 overlap_end = min(e_end, day_end)
                 if overlap_end > overlap_start:
                     day_throttled += (overlap_end - overlap_start)
             
-            trends[name]['health'].append(round(day_throttled / 3600, 1)) # Hours
+            trends[name]['health'].append(round(day_throttled / 3600, 1))
 
     return dates, trends
 
@@ -239,30 +227,22 @@ def login():
     data = request.json
     pwd = data.get('password')
     cfg = load_config()
-    
-    # 修复后的安全逻辑：
     tgt = cfg.get('admin_password_hash')
     h = hash_password(pwd)
     
-    # 1. 如果存在哈希，强制且只能匹配哈希
     if tgt:
         if h == tgt:
             session['logged_in'] = True
             return jsonify({"status": "success"})
-    
-    # 2. 只有在没有哈希（未初始化或手动清空）时，才允许默认或明文密码
     else:
-        pln = cfg.get('admin_password', 'admin') # 默认 fallback 为 admin
+        pln = cfg.get('admin_password', 'admin')
         if pwd == pln:
-            # 登录成功后，立即生成哈希并删除明文
             cfg['admin_password_hash'] = h
             if 'admin_password' in cfg: del cfg['admin_password']
             save_config_file(cfg)
-            
             session['logged_in'] = True
             return jsonify({"status": "success"})
 
-    # 其他情况一律失败
     return jsonify({"status": "error"}), 401
 
 @app.route('/api/auth/logout', methods=['POST'])
@@ -287,8 +267,10 @@ def handle_config():
     if not session.get('logged_in'): return jsonify({})
     return jsonify(load_config())
 
+# 安全修复：Run Now API 增加登录校验
 @app.route('/api/run_now', methods=['POST'])
 def manual_run():
+    if not session.get('logged_in'): return jsonify({"status": "error"}), 401
     scheduler.get_job('monitor_job').modify(next_run_time=datetime.datetime.now())
     return jsonify({"status": "ok"})
 
@@ -318,9 +300,7 @@ def get_stats_advanced():
         if is_admin: obj['ip'] = s['ip']
         res.append(obj)
     
-    # 新增：获取趋势数据
     trend_dates, trends = get_daily_trends(conn, servers)
-    
     conn.close()
     return jsonify({
         'servers': res, 
@@ -400,17 +380,23 @@ class EnhancedVertexClient:
             return True
         except: return False
 
-def send_telegram_notification(config):
+# 新增：统一通知函数 (TG & WeChat)
+def send_notifications(config):
     global last_notify_time
-    tg_conf = config.get("telegram_config", {})
-    token = tg_conf.get("bot_token")
-    chat_id = tg_conf.get("chat_id")
-    if not token or not chat_id or (time.time() - last_notify_time < 7200): return
+    # 2小时冷却时间
+    if time.time() - last_notify_time < 7200: return
+
+    notify_mode = config.get("notify_mode", "telegram") # telegram, wechat, all
+    
     try:
-        logger.info("正在发送 Telegram 状态报告...")
         servers = config.get("servers", [])
         conn = sqlite3.connect(DB_FILE)
-        msg_lines = [f"📊 <b>服务器状态简报</b> ({datetime.datetime.now().strftime('%H:%M')})", ""]
+        
+        # 文本内容生成 (Telegram HTML)
+        tg_lines = [f"📊 <b>服务器状态简报</b> ({datetime.datetime.now().strftime('%H:%M')})", ""]
+        # 文本内容生成 (WeChat Markdown)
+        wx_lines = [f"### 📊 服务器状态简报 ({datetime.datetime.now().strftime('%H:%M')})"]
+        
         for s in servers:
             name = s['name']
             state, dur, t_day_throttled, _ = calculate_health(conn, name)
@@ -418,17 +404,49 @@ def send_telegram_notification(config):
             start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
             total_seconds_today = (now - start_of_day).total_seconds()
             t_day_high = max(0, total_seconds_today - t_day_throttled)
+            
+            # Icons
             status_icon = "✅ 高速" if state == 'high' else "⚠️ 限速"
-            msg_lines.append(f"<b>{name}</b>")
-            msg_lines.append(f"当前: {status_icon} (持续 {format_duration(dur)})")
-            msg_lines.append(f"今日: 高速 {format_duration(t_day_high)} | 限速 {format_duration(t_day_throttled)}\n")
+            
+            # TG Format
+            tg_lines.append(f"<b>{name}</b>")
+            tg_lines.append(f"当前: {status_icon} (持续 {format_duration(dur)})")
+            tg_lines.append(f"今日: 高速 {format_duration(t_day_high)} | 限速 {format_duration(t_day_throttled)}\n")
+            
+            # WeChat Format
+            wx_lines.append(f"**{name}**")
+            wx_lines.append(f"> 当前: {status_icon} (持续 {format_duration(dur)})")
+            wx_lines.append(f"> 今日: 高速 {format_duration(t_day_high)} | 限速 {format_duration(t_day_throttled)}\n")
+            
         conn.close()
-        text = "\n".join(msg_lines)
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
-        if r.status_code == 200:
-            logger.info("Telegram 通知发送成功")
-            last_notify_time = time.time()
-    except Exception as e: logger.error(f"发送通知时出错: {e}")
+        
+        tg_text = "\n".join(tg_lines)
+        wx_text = "\n".join(wx_lines)
+        
+        # 发送 Telegram
+        if notify_mode in ['telegram', 'all']:
+            tg_conf = config.get("telegram_config", {})
+            token = tg_conf.get("bot_token")
+            chat_id = tg_conf.get("chat_id")
+            if token and chat_id:
+                try:
+                    requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": chat_id, "text": tg_text, "parse_mode": "HTML"}, timeout=10)
+                    logger.info("Telegram 通知发送成功")
+                except Exception as e: logger.error(f"Telegram 发送失败: {e}")
+        
+        # 发送 WeChat
+        if notify_mode in ['wechat', 'all']:
+            wx_key = config.get("wechat_config", {}).get("key")
+            if wx_key:
+                try:
+                    url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={wx_key}"
+                    requests.post(url, json={"msgtype": "markdown", "markdown": {"content": wx_text}}, timeout=10)
+                    logger.info("企业微信通知发送成功")
+                except Exception as e: logger.error(f"企业微信发送失败: {e}")
+                
+        last_notify_time = time.time()
+        
+    except Exception as e: logger.error(f"构建通知时出错: {e}")
 
 # ===================== 主监控循环 =====================
 def run_monitor_task():
@@ -436,7 +454,15 @@ def run_monitor_task():
     config = load_config()
     if not config: return
     SERVERS = config.get("servers", [])
+    
+    # 策略配置
     KEEP_CATS = config.get("keep_categories", [])
+    # 新增：HR 策略参数
+    HR_CONFIG = config.get("hr_config", {})
+    HR_CATS = HR_CONFIG.get("categories", [])
+    HR_LIMIT_KB = int(HR_CONFIG.get("upload_limit_kb", 10))
+    HR_LIMIT_BYTES = HR_LIMIT_KB * 1024 # 转为字节
+    
     QB_CONF = config.get("qb_config", {})
     vertex = EnhancedVertexClient(config)
     
@@ -458,19 +484,14 @@ def run_monitor_task():
     vps_status = {}
     soap = config.get("soap_config", {})
     
-    # === 关键修改：强制检查 WSDL URL，防止 No URL given 错误 ===
     if soap:
         try:
-            # 1. 尝试从配置获取
             wsdl_url = soap.get("wsdl_url")
-            
-            # 2. 如果配置为空或不存在，强制使用默认值
             if not wsdl_url:
                 wsdl_url = "https://www.servercontrolpanel.de/WSEndUser?wsdl"
                 logger.info("未配置 WSDL URL，使用默认值: " + wsdl_url)
                 
             client = Client(wsdl_url)
-            
             targets = [s['ip'] for s in SERVERS]
             for acc in soap.get("accounts", []):
                 try:
@@ -503,19 +524,32 @@ def run_monitor_task():
             torrents = []
             tr = qb_req(ip, "/torrents/info")
             if tr and tr.status_code == 200: torrents = tr.json()
+            
             if is_throttled:
-                hashes = [t['hash'] for t in torrents]
-                if hashes: qb_req(ip, "/torrents/reannounce", data={"hashes": "|".join(hashes)})
-                non_keep = [t['hash'] for t in torrents if t.get('category') not in KEEP_CATS]
+                # 1. 优先处理 HR 种子：不删、不暂停，只限速
+                hr_hashes = [t['hash'] for t in torrents if t.get('category') in HR_CATS]
+                if hr_hashes:
+                    # 批量设置限速
+                    qb_req(ip, "/torrents/setUploadLimit", data={"hashes": "|".join(hr_hashes), "limit": HR_LIMIT_BYTES})
+                    logger.info(f"[{name}] HR策略: 对 {len(hr_hashes)} 个种子限制上传速度为 {HR_LIMIT_KB} KB/s")
+
+                # 2. 删除：既不在保留分类，也不在 HR 分类中的
+                non_keep = [t['hash'] for t in torrents if t.get('category') not in KEEP_CATS and t.get('category') not in HR_CATS]
                 if non_keep:
                     qb_req(ip, "/torrents/delete", data={"hashes": "|".join(non_keep), "deleteFiles": "true"})
                     logger.info(f"[{name}] 删除 {len(non_keep)} 个非保留种子")
-                keep_active = [t['hash'] for t in torrents if t.get('category') in KEEP_CATS and t.get('state') not in ['stoppedUP', 'stoppedDL', 'pausedUP', 'pausedDL']]
+
+                # 3. 暂停：在保留分类中，但不在 HR 分类中 (纯保种，暂停上传)
+                keep_active = [t['hash'] for t in torrents if t.get('category') in KEEP_CATS and t.get('category') not in HR_CATS and t.get('state') not in ['stoppedUP', 'stoppedDL', 'pausedUP', 'pausedDL']]
                 if keep_active:
                     qb_smart_action(ip, "stop", "|".join(keep_active))
                     logger.info(f"[{name}] 暂停 {len(keep_active)} 个保留种子")
             else:
+                # 恢复模式
                 qb_smart_action(ip, "start", "all")
+                # 解除所有限速 (设置为 -1)
+                qb_req(ip, "/torrents/setUploadLimit", data={"hashes": "all", "limit": -1})
+                
     target_rss_ids = config.get("rss_ids", [])
     if target_rss_ids and config.get("vertex_config", {}).get("use_api_update", True):
         all_rules = vertex.list_rss_rules()
@@ -536,7 +570,8 @@ def run_monitor_task():
                             need_restart = True
         else: logger.warning("无法获取 RSS 规则列表")
         if need_restart: vertex.restart_container()
-    send_telegram_notification(config)
+    
+    send_notifications(config)
     logger.info("<<< 检测完成")
 
 scheduler = BackgroundScheduler()

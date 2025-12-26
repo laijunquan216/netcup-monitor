@@ -258,7 +258,7 @@
                         <div class="mb-3 row align-items-center">
                             <label class="col-sm-3 col-form-label">监控 RSS ID</label>
                             <div class="col-sm-9">
-                                <input id="rss_ids" class="form-control" placeholder="4c145005, c0bf7481 (逗号分隔)">
+                                <input id="rss_ids" class="form-control" placeholder="4c145005, c0bf7481 (支持中英文逗号)">
                                 <div class="form-hint">自动从 Vertex 获取并更新规则，无需挂载文件</div>
                             </div>
                         </div>
@@ -269,14 +269,14 @@
                                 <h5 class="fw-bold mb-3 border-bottom pb-2">策略管理</h5>
                                 <div class="mb-3">
                                     <label class="form-label">保留分类 (Keep Categories)</label>
-                                    <input id="keep_cats" class="form-control" placeholder="keep, PTER, FRD">
+                                    <input id="keep_cats" class="form-control" placeholder="keep">
                                     <div class="form-hint">被限速时，这些分类暂停，其他删除</div>
                                 </div>
                                 
                                 <div class="mb-3 bg-light p-3 rounded border">
                                     <label class="form-label fw-bold text-primary"><i class="bi bi-shield-check me-1"></i> HR 保护策略</label>
                                     <div class="mb-2">
-                                        <label class="small text-secondary">受保护分类 (逗号分隔)</label>
+                                        <label class="small text-secondary">受保护分类 (支持中英文逗号)</label>
                                         <input id="hr_cats" class="form-control form-control-sm" placeholder="HR, VIP">
                                     </div>
                                     <div>
@@ -533,11 +533,20 @@
     function saveConfig() {
         if(!isLoggedIn)return; 
         
+        // 辅助函数：处理中英文逗号分割
+        const cleanSplit = (str) => str.replace(/，/g, ',').split(',').map(s=>s.trim()).filter(x=>x);
+
         config.qb_config={user:document.getElementById('qb_user').value,password:document.getElementById('qb_pass').value,port:parseInt(document.getElementById('qb_port').value)};
         config.vertex_config={api_url:document.getElementById('vt_url').value,api_user:document.getElementById('vt_user').value,api_password:document.getElementById('vt_pass').value,container_name:document.getElementById('vt_container').value};
-        delete config.rss_dir; config.rss_ids = document.getElementById('rss_ids').value.split(',').map(s=>s.trim()).filter(x=>x);
-        config.keep_categories=document.getElementById('keep_cats').value.split(',').filter(x=>x); 
-        config.hr_config = { categories: document.getElementById('hr_cats').value.split(',').map(s=>s.trim()).filter(x=>x), upload_limit_kb: parseInt(document.getElementById('hr_limit').value) || 10 };
+        delete config.rss_dir; 
+        
+        config.rss_ids = cleanSplit(document.getElementById('rss_ids').value);
+        config.keep_categories= cleanSplit(document.getElementById('keep_cats').value);
+        config.hr_config = { 
+            categories: cleanSplit(document.getElementById('hr_cats').value), 
+            upload_limit_kb: parseInt(document.getElementById('hr_limit').value) || 10 
+        };
+        
         config.notify_mode = document.getElementById('notify_mode').value;
         config.telegram_config={bot_token:document.getElementById('tg_token').value,chat_id:document.getElementById('tg_chat').value};
         config.wechat_config = { key: document.getElementById('wx_key').value };

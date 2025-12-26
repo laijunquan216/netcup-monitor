@@ -52,6 +52,11 @@
         .w-medium { max-width: 350px; }
         
         .chart-container { position: relative; height: 300px; width: 100%; padding: 20px; border-top: 1px solid var(--border-color); }
+        
+        #logViewer {
+            background-color: #1e1e1e; color: #d4d4d4; font-family: 'JetBrains Mono', monospace; 
+            font-size: 0.85rem; padding: 15px; border-radius: 0 0 12px 12px; height: 500px; overflow-y: auto; white-space: pre-wrap;
+        }
 
         .config-row { display: flex; gap: 15px; align-items: center; padding: 10px 15px; border-bottom: 1px solid #f0f0f0; background: #fff; }
         .config-header { display: flex; gap: 15px; padding: 10px 15px; background: #f3f4f6; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); }
@@ -138,6 +143,7 @@
             <li class="nav-item protected-tab d-none"><button class="nav-link" onclick="switchTab('servers')"><i class="bi bi-hdd-rack me-2"></i>实例配置</button></li>
             <li class="nav-item protected-tab d-none"><button class="nav-link" onclick="switchTab('global')"><i class="bi bi-sliders me-2"></i>全局设置</button></li>
             <li class="nav-item protected-tab d-none"><button class="nav-link" onclick="switchTab('accounts')"><i class="bi bi-person-badge me-2"></i>SCP账号</button></li>
+            <li class="nav-item protected-tab d-none"><button class="nav-link" onclick="switchTab('logs'); loadLogs()"><i class="bi bi-terminal me-2"></i>运行日志</button></li>
         </ul>
     </div>
 
@@ -268,7 +274,7 @@
                                 </div>
                                 
                                 <div class="mb-3 bg-light p-3 rounded border">
-                                    <label class="form-label fw-bold text-primary"><i class="bi bi-shield-check me-1"></i> HR (High Retention) 保护策略</label>
+                                    <label class="form-label fw-bold text-primary"><i class="bi bi-shield-check me-1"></i> HR 保护策略</label>
                                     <div class="mb-2">
                                         <label class="small text-secondary">受保护分类 (逗号分隔)</label>
                                         <input id="hr_cats" class="form-control form-control-sm" placeholder="HR, VIP">
@@ -355,6 +361,16 @@
                     <div class="cfg-soap-action"></div>
                 </div>
                 <div id="soapContainer"></div>
+            </div>
+        </div>
+
+        <div id="view-logs" class="tab-view d-none">
+             <div class="white-card">
+                <div class="card-header-custom">
+                    <div class="card-title">系统运行日志</div>
+                    <button class="btn btn-sm btn-secondary" onclick="loadLogs()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+                </div>
+                <div id="logViewer">正在加载日志...</div>
             </div>
         </div>
     </div>
@@ -484,7 +500,6 @@
         });
     }
     
-    // === 控制通知字段显示 ===
     function toggleNotifyFields() {
         const mode = document.getElementById('notify_mode').value;
         const tg = document.getElementById('tg_fields'); const wx = document.getElementById('wx_fields'); const wx_app = document.getElementById('wx_app_fields');
@@ -538,6 +553,22 @@
         fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)}).then(r=>r.json()).then(res=>showToast(res.status==='success'?'配置已保存':'保存失败',res.status==='success'?'success':'error'));
     }
     function triggerRun() { fetch('/api/run_now', {method:'POST'}).then(()=>showToast('已触发刷新')); }
+
+    // 新增：加载日志
+    function loadLogs() {
+        const viewer = document.getElementById('logViewer');
+        viewer.innerHTML = "正在刷新日志...";
+        fetch('/api/logs').then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                viewer.innerText = data.data || "（日志文件为空）";
+                viewer.scrollTop = viewer.scrollHeight; // 滚动到底部
+            } else {
+                viewer.innerText = "无法加载日志: " + (data.message || "未知错误");
+            }
+        }).catch(err => {
+            viewer.innerText = "请求失败: " + err;
+        });
+    }
 </script>
 </body>
 </html>

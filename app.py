@@ -587,45 +587,99 @@ def run_monitor_task():
             tr = qb_req(ip, "/torrents/info")
             if tr and tr.status_code == 200: torrents = tr.json()
             
+            # Create a map for easy lookup if needed (unused for now but good for debug)
+            # torrent_map = {t['hash']: t for t in torrents}
+            
+            # Restoration file path
+            restore_file = os.path.join(DATA_DIR, f'restore_{ip}.json')
+
             if is_throttled:
-                # 1. 优先处理 HR 种子
+                # Load existing restoration data
+                restore_data = {}
+                if os.path.exists(restore_file):
+                    try:
+                        with open(restore_file, 'r', encoding='utf-8') as f:
+                            restore_data = json.load(f)
+                    except: pass
+                
+                data_changed = False
+                
+                # 1. Prioritize HR torrents
                 hr_hashes_seeding = []
                 hr_hashes_downloading = []
 
                 for t in torrents:
+                    t_hash = t['hash']
                     if t.get('category') in HR_CATS:
-                        # progress >= 1 表示下载完成
                         if t.get('progress', 0) >= 1:
-                            hr_hashes_seeding.append(t['hash'])
+                            hr_hashes_seeding.append(t_hash)
+                            # Record original limit if not already recorded
+                            # This ensures we capture the limit set by RSS BEFORE we throttle it
+                            if t_hash not in restore_data:
+                                restore_data[t_hash] = t.get('up_limit', -1)
+                                data_changed = True
                         else:
-                            hr_hashes_downloading.append(t['hash'])
+                            hr_hashes_downloading.append(t_hash)
+                
+                # Save restoration data if updated
+                if data_changed:
+                    try:
+                        with open(restore_file, 'w', encoding='utf-8') as f:
+                            json.dump(restore_data, f)
+                    except Exception as e:
+                        logger.error(f"[{name}] Failed to save restore data: {e}")
 
-                # 1.1 做种中的 HR 种子 -> 上传限速
+                # 1.1 HR Seeding -> Limit Upload
                 if hr_hashes_seeding:
                     qb_req(ip, "/torrents/setUploadLimit", data={"hashes": "|".join(hr_hashes_seeding), "limit": HR_LIMIT_BYTES})
-                    logger.info(f"[{name}] HR策略(做种): 限制 {len(hr_hashes_seeding)} 个种子上传速度")
+                    logger.info(f"[{name}] HR Policy (Seeding): Limited {len(hr_hashes_seeding)} torrents")
 
-                # 1.2 下载中的 HR 种子 -> 暂停
+                # 1.2 HR Downloading -> Pause
                 if hr_hashes_downloading:
                     qb_smart_action(ip, "stop", "|".join(hr_hashes_downloading))
-                    logger.info(f"[{name}] HR策略(下载中): 暂停 {len(hr_hashes_downloading)} 个未完成种子")
+                    logger.info(f"[{name}] HR Policy (Downloading): Paused {len(hr_hashes_downloading)} torrents")
 
-                # 2. 删除：既不在保留分类，也不在 HR 分类中的
+                # 2. Delete non-keep / non-HR
                 non_keep = [t['hash'] for t in torrents if t.get('category') not in KEEP_CATS and t.get('category') not in HR_CATS]
                 if non_keep:
                     qb_req(ip, "/torrents/delete", data={"hashes": "|".join(non_keep), "deleteFiles": "true"})
-                    logger.info(f"[{name}] 删除 {len(non_keep)} 个非保留种子")
+                    logger.info(f"[{name}] Deleted {len(non_keep)} non-keep torrents")
 
-                # 3. 暂停：在保留分类中，但不在 HR 分类中 (纯保种，暂停上传)
+                # 3. Pause Keep (non-HR)
                 keep_active = [t['hash'] for t in torrents if t.get('category') in KEEP_CATS and t.get('category') not in HR_CATS and t.get('state') not in ['stoppedUP', 'stoppedDL', 'pausedUP', 'pausedDL']]
                 if keep_active:
                     qb_smart_action(ip, "stop", "|".join(keep_active))
-                    logger.info(f"[{name}] 暂停 {len(keep_active)} 个保留种子")
+                    logger.info(f"[{name}] Paused {len(keep_active)} keep torrents")
+
             else:
-                # 恢复模式
-                qb_smart_action(ip, "start", "all")
-                # 解除所有限速 (设置为 -1)
-                qb_req(ip, "/torrents/setUploadLimit", data={"hashes": "all", "limit": -1})
+                # Recovery Mode: Only triggered if restore file exists
+                if os.path.exists(restore_file):
+                    logger.info(f"[{name}] Detected speed recovery, restoring states...")
+                    
+                    # 1. Restore upload limits
+                    try:
+                        with open(restore_file, 'r', encoding='utf-8') as f:
+                            restore_data = json.load(f)
+                        
+                        # Group by limit for fewer API calls
+                        limit_groups = {}
+                        for t_hash, limit in restore_data.items():
+                            if limit not in limit_groups: limit_groups[limit] = []
+                            limit_groups[limit].append(t_hash)
+                        
+                        for limit, hashes in limit_groups.items():
+                            qb_req(ip, "/torrents/setUploadLimit", data={"hashes": "|".join(hashes), "limit": limit})
+                            
+                        logger.info(f"[{name}] Restored limits for {len(restore_data)} torrents")
+                    except Exception as e:
+                        logger.error(f"[{name}] Failed to restore limits: {e}")
+                    
+                    # 2. Resume all tasks (to ensure paused ones start)
+                    qb_smart_action(ip, "start", "all")
+                    
+                    # 3. Clean up
+                    try: os.remove(restore_file)
+                    except: pass
                 
     target_rss_ids = config.get("rss_ids", [])
     if target_rss_ids and config.get("vertex_config", {}).get("use_api_update", True):

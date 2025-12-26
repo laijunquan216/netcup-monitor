@@ -51,7 +51,6 @@
         .w-compact { max-width: 200px; }
         .w-medium { max-width: 350px; }
         
-        /* 图表容器 */
         .chart-container { position: relative; height: 300px; width: 100%; padding: 20px; border-top: 1px solid var(--border-color); }
 
         .config-row { display: flex; gap: 15px; align-items: center; padding: 10px 15px; border-bottom: 1px solid #f0f0f0; background: #fff; }
@@ -82,12 +81,8 @@
             .config-row input:not([type="checkbox"]) { width: 100% !important; max-width: none; }
             .cfg-mode { display: flex; justify-content: space-between; align-items: center; background: #f9fafb; padding: 10px; border-radius: 8px; }
             .form-switch .form-check-input { width: 2em; margin-left: 0; float: none; } 
-            
-            /* === 修复移动端按钮过大 === */
-            /* 仅让列表内的删除按钮满宽，顶部的添加按钮保持紧凑 */
             .cfg-action .btn-sm, .cfg-soap-action .btn-sm { width: 100%; padding: 8px; margin-top: 5px; }
             .card-header-custom .btn-sm { width: auto; padding: 0.4rem 1rem; }
-            
             .table-custom th, .table-custom td { padding: 0.8rem 1rem; }
             .chart-container { height: 250px; padding: 10px; }
         }
@@ -200,16 +195,18 @@
                     <div class="card-title">实例配置</div>
                     <button class="btn btn-sm btn-primary" onclick="addServerRow()"><i class="bi bi-plus-lg"></i> 添加</button>
                 </div>
+                <!-- 修复：修改表头，增加说明 -->
                 <div class="config-header">
                     <div class="cfg-name">名称</div>
                     <div class="cfg-ip">IP地址</div>
-                    <div class="cfg-id">Client ID (Hash)</div>
+                    <div class="cfg-id">Client ID</div>
                     <div class="cfg-mode">模式</div>
                     <div class="cfg-action"></div>
                 </div>
                 <div id="serverContainer"></div>
                 <div class="p-3 bg-light border-top text-secondary small">
-                    <i class="bi bi-info-circle me-1"></i> <strong>关于“不托管”：</strong> 开启后，脚本只会记录该实例的流量和限速状态，<strong>不会</strong>对QB里的种子进行删除或暂停操作，也<strong>不会</strong>参与Vertex的任何联动。
+                    <p class="mb-1"><i class="bi bi-info-circle me-1"></i> <strong>Client ID：</strong> 请填写 Vertex 下载器编辑页面中的 ID 信息。</p>
+                    <p class="mb-0"><i class="bi bi-exclamation-triangle me-1"></i> <strong>关于“不托管”：</strong> 开启后，脚本只会记录该实例的流量和限速状态，不会对种子进行操作，也不会参与 Vertex 联动。</p>
                 </div>
             </div>
         </div>
@@ -231,23 +228,21 @@
                             <label class="col-sm-3 col-form-label">端口</label>
                             <div class="col-sm-9"><input id="qb_port" type="number" class="form-control w-compact" placeholder="8080"></div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">排除 IP (逗号分隔)</label>
-                            <textarea id="qb_exclude" class="form-control" rows="2" placeholder="192.168.1.5, 10.0.0.1"></textarea>
-                        </div>
+                        <!-- 修复：删除 排除IP 字段 -->
                     </div>
                     <div class="col-md-6">
                         <h5 class="fw-bold mb-3 border-bottom pb-2">Vertex 联动配置</h5>
                         <div class="mb-3 row align-items-center">
+                            <!-- 修复：修改文案 -->
                             <label class="col-sm-3 col-form-label">地址</label>
                             <div class="col-sm-9"><input id="vt_url" class="form-control w-medium" placeholder="http://192.168.1.2:3000"></div>
                         </div>
                         <div class="mb-3 row align-items-center">
-                            <label class="col-sm-3 col-form-label">API 用户</label>
+                            <label class="col-sm-3 col-form-label">用户名</label>
                             <div class="col-sm-9"><input id="vt_user" class="form-control w-medium"></div>
                         </div>
                         <div class="mb-3 row align-items-center">
-                            <label class="col-sm-3 col-form-label">API 密码</label>
+                            <label class="col-sm-3 col-form-label">密码</label>
                             <div class="col-sm-9"><input id="vt_pass" type="password" class="form-control w-medium"></div>
                         </div>
                         <div class="mb-3 row align-items-center">
@@ -266,27 +261,60 @@
                         </div>
                     </div>
                     <div class="col-12 mt-4">
-                        <h5 class="fw-bold mb-3 border-bottom pb-2">策略与安全</h5>
                         <div class="row">
                             <div class="col-md-6">
+                                <h5 class="fw-bold mb-3 border-bottom pb-2">策略管理</h5>
                                 <div class="mb-3">
                                     <label class="form-label">保留分类 (Keep Categories)</label>
                                     <input id="keep_cats" class="form-control" placeholder="keep, PTER, FRD">
-                                    <div class="form-hint">被限速时，非这些分类的种子将被删除</div>
+                                    <div class="form-hint">被限速时，这些分类暂停，其他删除</div>
                                 </div>
-                                <div class="mb-3 row">
-                                    <div class="col-6">
-                                        <label class="form-label">TG Bot Token</label>
-                                        <input id="tg_token" class="form-control">
+                                <!-- 新增：HR 策略 -->
+                                <div class="mb-3 bg-light p-3 rounded border">
+                                    <label class="form-label fw-bold text-primary"><i class="bi bi-shield-check me-1"></i> HR (High Retention) 保护策略</label>
+                                    <div class="mb-2">
+                                        <label class="small text-secondary">受保护分类 (逗号分隔)</label>
+                                        <input id="hr_cats" class="form-control form-control-sm" placeholder="HR, VIP">
                                     </div>
-                                    <div class="col-6">
-                                        <label class="form-label">TG Chat ID</label>
-                                        <input id="tg_chat" class="form-control">
+                                    <div>
+                                        <label class="small text-secondary">限速上传限制 (KB/s)</label>
+                                        <input id="hr_limit" type="number" class="form-control form-control-sm w-compact" value="10">
                                     </div>
+                                    <div class="form-hint mt-2">当服务器限速时，上述分类的种子<strong>不会被删除或暂停</strong>，而是限制上传速度。</div>
                                 </div>
                             </div>
                             <div class="col-md-6">
+                                <h5 class="fw-bold mb-3 border-bottom pb-2">通知与安全</h5>
                                 <div class="mb-3">
+                                    <label class="form-label">通知方式</label>
+                                    <select id="notify_mode" class="form-select w-medium" onchange="toggleNotifyFields()">
+                                        <option value="telegram">Telegram Bot</option>
+                                        <option value="wechat">企业微信机器人</option>
+                                        <option value="all">全部启用</option>
+                                    </select>
+                                </div>
+                                
+                                <div id="tg_fields">
+                                    <div class="mb-3 row">
+                                        <div class="col-6">
+                                            <label class="form-label small">TG Bot Token</label>
+                                            <input id="tg_token" class="form-control form-control-sm">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label small">TG Chat ID</label>
+                                            <input id="tg_chat" class="form-control form-control-sm">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="wx_fields" class="d-none">
+                                    <div class="mb-3">
+                                        <label class="form-label small">企业微信 Webhook Key</label>
+                                        <input id="wx_key" class="form-control form-control-sm" placeholder="例如: 693a91f6-7xxx-4xxx-xxxx-xxxxxxxxxxxx">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3 mt-4">
                                     <label class="form-label text-danger">修改管理员密码</label>
                                     <input id="admin_pass" type="password" class="form-control w-medium" placeholder="留空则不修改">
                                 </div>
@@ -300,7 +328,6 @@
         <div id="view-accounts" class="tab-view d-none">
              <div class="white-card">
                 <div class="card-header-custom"><div class="card-title">Netcup SCP 账号</div><button class="btn btn-sm btn-primary" onclick="addSoapRow()"><i class="bi bi-plus-lg"></i> 添加</button></div>
-                <!-- 新增：WSDL URL 配置 -->
                 <div class="p-3 border-bottom bg-light">
                     <div class="d-flex align-items-center gap-2">
                         <label class="fw-bold small text-secondary text-nowrap">WSDL 接口地址:</label>
@@ -517,20 +544,45 @@
                 <td data-val="${s.health.avg_daily_throttled}" class="text-secondary font-mono">${fmtDur(s.health.avg_daily_throttled)}</td></tr>`;
         });
     }
+    
+    // === 新增：控制通知字段显示 ===
+    function toggleNotifyFields() {
+        const mode = document.getElementById('notify_mode').value;
+        const tg = document.getElementById('tg_fields');
+        const wx = document.getElementById('wx_fields');
+        
+        if (mode === 'telegram') { tg.classList.remove('d-none'); wx.classList.add('d-none'); }
+        else if (mode === 'wechat') { tg.classList.add('d-none'); wx.classList.remove('d-none'); }
+        else { tg.classList.remove('d-none'); wx.classList.remove('d-none'); }
+    }
 
     function fetchConfig() { if(!isLoggedIn)return; fetch('/api/config').then(r=>r.json()).then(d => { config = d; renderForms(); }); }
     function renderForms() {
+        // QB
         document.getElementById('qb_user').value = config.qb_config?.user||''; document.getElementById('qb_pass').value = config.qb_config?.password||'';
-        document.getElementById('qb_port').value = config.qb_config?.port||''; document.getElementById('qb_exclude').value = (config.qb_config?.exclude_qb_ips||[]).join(',');
+        document.getElementById('qb_port').value = config.qb_config?.port||''; 
+        // 删除了 qb_exclude 填充
+        
+        // Vertex
         document.getElementById('vt_url').value = config.vertex_config?.api_url||''; document.getElementById('vt_user').value = config.vertex_config?.api_user||'';
         document.getElementById('vt_pass').value = config.vertex_config?.api_password||''; document.getElementById('vt_container').value = config.vertex_config?.container_name||'vertex';
         
+        // RSS
         document.getElementById('rss_ids').value = (config.rss_ids || []).join(', ');
 
+        // 策略
         document.getElementById('keep_cats').value = (config.keep_categories||[]).join(','); 
+        document.getElementById('hr_cats').value = (config.hr_config?.categories || []).join(',');
+        document.getElementById('hr_limit').value = config.hr_config?.upload_limit_kb || 10;
+        
+        // 通知
+        document.getElementById('notify_mode').value = config.notify_mode || 'telegram';
+        toggleNotifyFields();
+        
         document.getElementById('tg_token').value = config.telegram_config?.bot_token||''; document.getElementById('tg_chat').value = config.telegram_config?.chat_id||'';
+        document.getElementById('wx_key').value = config.wechat_config?.key || '';
 
-        // 新增：WSDL URL 默认值填充
+        // WSDL
         document.getElementById('soap_wsdl').value = config.soap_config?.wsdl_url || 'https://www.servercontrolpanel.de/WSEndUser?wsdl';
 
         const sc = document.getElementById('serverContainer'); sc.innerHTML='';
@@ -557,17 +609,26 @@
     
     function saveConfig() {
         if(!isLoggedIn)return; 
-        config.qb_config={user:document.getElementById('qb_user').value,password:document.getElementById('qb_pass').value,port:parseInt(document.getElementById('qb_port').value),exclude_qb_ips:document.getElementById('qb_exclude').value.split(',').filter(x=>x)};
+        // 删除了 qb_exclude 处理
+        config.qb_config={user:document.getElementById('qb_user').value,password:document.getElementById('qb_pass').value,port:parseInt(document.getElementById('qb_port').value)};
         config.vertex_config={api_url:document.getElementById('vt_url').value,api_user:document.getElementById('vt_user').value,api_password:document.getElementById('vt_pass').value,container_name:document.getElementById('vt_container').value};
         
         delete config.rss_dir;
         config.rss_ids = document.getElementById('rss_ids').value.split(',').map(s=>s.trim()).filter(x=>x);
 
         config.keep_categories=document.getElementById('keep_cats').value.split(',').filter(x=>x); 
-        config.telegram_config={bot_token:document.getElementById('tg_token').value,chat_id:document.getElementById('tg_chat').value};
         
-        // 新增：保存 WSDL URL 到 soap_config
-        if(!config.soap_config) config.soap_config = {};
+        // 新增：HR 保存逻辑
+        config.hr_config = {
+            categories: document.getElementById('hr_cats').value.split(',').map(s=>s.trim()).filter(x=>x),
+            upload_limit_kb: parseInt(document.getElementById('hr_limit').value) || 10
+        };
+        
+        // 新增：通知配置保存
+        config.notify_mode = document.getElementById('notify_mode').value;
+        config.telegram_config={bot_token:document.getElementById('tg_token').value,chat_id:document.getElementById('tg_chat').value};
+        config.wechat_config = { key: document.getElementById('wx_key').value };
+
         config.soap_config.wsdl_url = document.getElementById('soap_wsdl').value;
 
         const np=document.getElementById('admin_pass').value; if(np)config.admin_password=np;

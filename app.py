@@ -666,17 +666,17 @@ def run_monitor_task():
                     except Exception as e:
                         logger.error(f"[{name}] Failed to restore limits: {e}")
                     
-                    # 修复：使用 resume 替代 start，并恢复所有种子
+                    # 修复：使用 resume 替代 start
                     # 只恢复非免控分类的 torrents（避免影响 sky）
-torrents2 = []
-tr2 = qb_req(ip, "/torrents/info")
-if tr2 and tr2.status_code == 200:
-    torrents2 = tr2.json()
+                    torrents2 = []
+                    tr2 = qb_req(ip, "/torrents/info")
+                    if tr2 and tr2.status_code == 200:
+                        torrents2 = tr2.json()
 
-resume_hashes = [t['hash'] for t in torrents2 if t.get('category') not in EXEMPT_CATS]
-if resume_hashes:
-    qb_smart_action(ip, "resume", "|".join(resume_hashes))
-    logger.info(f"[{name}] Resumed {len(resume_hashes)} non-exempt torrents")
+                    resume_hashes = [t['hash'] for t in torrents2 if t.get('category') not in EXEMPT_CATS]
+                    if resume_hashes:
+                        qb_smart_action(ip, "resume", "|".join(resume_hashes))
+                        logger.info(f"[{name}] Resumed {len(resume_hashes)} non-exempt torrents")
 
                     
                     try: os.remove(restore_file)

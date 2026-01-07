@@ -512,6 +512,7 @@ def run_monitor_task():
     KEEP_CATS = config.get("keep_categories", [])
     HR_CONFIG = config.get("hr_config", {})
     HR_CATS = HR_CONFIG.get("categories", [])
+    EXEMPT_CATS = config.get("exempt_categories", ["sky"])
     HR_LIMIT_KB = int(HR_CONFIG.get("upload_limit_kb", 10))
     HR_LIMIT_BYTES = HR_LIMIT_KB * 1024
     
@@ -584,6 +585,7 @@ def run_monitor_task():
             if tr and tr.status_code == 200: torrents = tr.json()
             
             restore_file = os.path.join(DATA_DIR, f'restore_{ip}.json')
+            torrents = [t for t in torrents if t.get('category') not in EXEMPT_CATS]
 
             if is_throttled:
                 restore_data = {}
@@ -665,8 +667,17 @@ def run_monitor_task():
                         logger.error(f"[{name}] Failed to restore limits: {e}")
                     
                     # 修复：使用 resume 替代 start，并恢复所有种子
-                    qb_smart_action(ip, "resume", "all")
-                    logger.info(f"[{name}] Resumed all torrents")
+                    # 只恢复非免控分类的 torrents（避免影响 sky）
+torrents2 = []
+tr2 = qb_req(ip, "/torrents/info")
+if tr2 and tr2.status_code == 200:
+    torrents2 = tr2.json()
+
+resume_hashes = [t['hash'] for t in torrents2 if t.get('category') not in EXEMPT_CATS]
+if resume_hashes:
+    qb_smart_action(ip, "resume", "|".join(resume_hashes))
+    logger.info(f"[{name}] Resumed {len(resume_hashes)} non-exempt torrents")
+
                     
                     try: os.remove(restore_file)
                     except: pass

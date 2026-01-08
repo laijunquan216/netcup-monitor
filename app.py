@@ -570,10 +570,12 @@ def run_monitor_task():
         name, ip = s['name'], s['ip']
         is_unmanaged = s.get('unmanaged', False)
         up, dl = 0, 0
-        r = qb_req(ip, "/transfer/info")
+        r = qb_req(ip, "/sync/maindata?rid=0")
         if r and r.status_code == 200:
-            d = r.json()
-            up, dl = d.get('up_info_data', 0), d.get('dl_info_data', 0)
+            md = r.json()
+            st = md.get("server_state", {}) or {}
+            up = st.get("alltime_ul", 0)
+            dl = st.get("alltime_dl", 0)
         is_throttled = vps_status.get(ip, False)
         state = 'low' if is_throttled else 'high'
         log_to_db(name, state, up, dl)

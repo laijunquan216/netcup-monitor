@@ -569,13 +569,31 @@ def run_monitor_task():
     for s in SERVERS:
         name, ip = s['name'], s['ip']
         is_unmanaged = s.get('unmanaged', False)
-        up, dl = 0, 0
         r = qb_req(ip, "/sync/maindata?rid=0")
-        if r and r.status_code == 200:
+        if (not r) or (r.status_code != 200):
+            logger.warning(f"[{name}] QB maindata failed: {None if not r else r.status_code}")
+            continue
+        try:
             md = r.json()
-            st = md.get("server_state", {}) or {}
-            up = st.get("alltime_ul", 0)
-            dl = st.get("alltime_dl", 0)
+        except Exception as e:
+             logger.warning(f"[{name}] QB maindata json failed: {e}")
+             continue
+
+        st = md.get("server_state") or {}
+
+        # 新增：字段缺失就跳过
+        if ("alltime_ul" not in st) or ("alltime_dl" not in st):
+            logger.warning(f"[{name}] QB server_state missing alltime keys, skip logging: keys={list(st.keys())}")
+            continue
+        
+        up = int(st["alltime_ul"])
+        dl = int(st["alltime_dl"])
+
+        # 保险：避免插入 0/0（除非你确实把 QB 统计手动清零了）
+        if up == 0 and dl == 0:
+            logger.warning(f"[{name}] QB alltime is zero, skip logging")
+            continue
+
         is_throttled = vps_status.get(ip, False)
         state = 'low' if is_throttled else 'high'
         log_to_db(name, state, up, dl)

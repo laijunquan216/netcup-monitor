@@ -473,8 +473,8 @@
     }
 
     function renderStatusCards(s) {
-        const c = (k,l,v,cl) => `<div class="stat-box ${currentFilter===k?'active':''}" onclick="currentFilter='${k}';renderTables();renderStatusCards({total:${s.total},high:${s.high},low:${s.low},offline:${s.offline}})"><div class="stat-num ${cl}">${v}</div><div class="stat-label">${l}</div></div>`;
-        document.getElementById('statusSummary').innerHTML = c('all','总数',s.total,'text-primary') + c('high','正常',s.high,'text-success') + c('low','限速',s.low,'text-danger') + c('offline','离线',s.offline,'text-secondary');
+        const c = (k,l,v,cl) => `<div class="stat-box ${currentFilter===k?'active':''}" onclick="currentFilter='${k}';renderTables();renderStatusCards({total:${s.total},high:${s.high},low:${s.low},init:${s.init},offline:${s.offline}})"><div class="stat-num ${cl}">${v}</div><div class="stat-label">${l}</div></div>`;
+        document.getElementById('statusSummary').innerHTML = c('all','总数',s.total,'text-primary') + c('high','正常',s.high,'text-success') + c('low','限速',s.low,'text-danger') + c('init','初始化',s.init,'text-warning') + c('offline','离线',s.offline,'text-secondary');
     }
 
     function renderTables() {
@@ -484,8 +484,8 @@
         const gc = (u,d) => `<div class="metric-main font-mono">${fmtBytes(u+d)}</div><div class="metric-sub font-mono"><span class="text-success">↑${fmtBytes(u)}</span> <span class="text-primary ms-2">↓${fmtBytes(d)}</span></div>`;
 
         filtered.forEach(s => {
-            let cls = s.status === 'high' ? 'bg-success-subtle' : (s.status === 'low' ? 'bg-danger-subtle' : 'bg-gray-subtle');
-            let txt = s.status === 'high' ? '正常运行' : (s.status === 'low' ? '限速中' : '离线');
+            let cls = s.status === 'high' ? 'bg-success-subtle' : (s.status === 'low' ? 'bg-danger-subtle' : (s.status === 'init' ? 'bg-warning-subtle' : 'bg-gray-subtle'));
+            let txt = s.status === 'high' ? '正常运行' : (s.status === 'low' ? '限速中' : (s.status === 'init' ? '初始化' : '离线'));
             let badge = `<span class="badge-status ${cls}"><span class="dot"></span>${txt}</span>`;
             let nameCol = `<div class="fw-bold text-dark">${s.name}</div>${(isLoggedIn && showIPs && s.ip)?`<div class="small text-secondary font-mono">${s.ip}</div>`:''}`;
 

@@ -307,7 +307,7 @@ def get_stats_advanced():
     conn = sqlite3.connect(DB_FILE)
     is_admin = session.get('logged_in', False)
     res = []
-    summ = {'total': 0, 'high': 0, 'low': 0, 'offline': 0}
+    summ = {'total': 0, 'high': 0, 'low': 0, 'init': 0, 'offline': 0}
     
     for s in servers:
         n = s['name']
@@ -315,8 +315,10 @@ def get_stats_advanced():
         st, dur, t_day, t_avg = calculate_health(conn, n)
         
         summ['total'] += 1
-        if st == 'unknown': summ['offline'] += 1
-        else: summ[st] += 1
+        if st == 'unknown':
+            summ['offline'] += 1
+        else:
+            summ[st] = summ.get(st, 0) + 1
         
         obj = {
             'name': n, 'status': st,
@@ -439,7 +441,14 @@ def send_notifications(config):
             total_seconds_today = (now - start_of_day).total_seconds()
             t_day_high = max(0, total_seconds_today - t_day_throttled)
             
-            status_icon = "✅ 高速" if state == 'high' else "⚠️ 限速"
+            if state == 'high':
+                status_icon = "✅ 高速"
+            elif state == 'low':
+                status_icon = "⚠️ 限速"
+            elif state == 'init':
+                status_icon = "🟡 初始化"
+            else:
+                status_icon = "❔ 未知"
             
             tg_lines.append(f"<b>{name}</b>")
             tg_lines.append(f"当前: {status_icon} (持续 {format_duration(dur)})")
@@ -589,9 +598,12 @@ def run_monitor_task():
         up = int(st["alltime_ul"])
         dl = int(st["alltime_dl"])
 
-        # 保险：避免插入 0/0（除非你确实把 QB 统计手动清零了）
+        # 初始化阶段：新实例 alltime=0/0 时标记为 init，避免被当成离线
         if up == 0 and dl == 0:
-            logger.warning(f"[{name}] QB alltime is zero, skip logging")
+            logger.warning(f"[{name}] QB alltime is zero, mark as init")
+            log_to_db(name, 'init', up, dl)
+            if not is_unmanaged and not vps_status.get(ip, False) and s.get('client_id'):
+                good_clients.append(s['client_id'])
             continue
 
         is_throttled = vps_status.get(ip, False)

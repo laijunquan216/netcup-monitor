@@ -27,6 +27,31 @@
 
 不同于普通的监控脚本，本项目通过对接 Netcup 官方 SOAP API 精准识别服务器状态。当检测到限速时，它能自动指挥 **qBittorrent** 和 **Vertex** 进行精细化的流量规避，保证服务器快速恢复高速状态，并在限速解除后自动恢复生产，实现真正的“无人值守”。
 
+## ⚡ 一键安装 / 一键升级（Ubuntu/Debian，支持 x86/ARM）
+
+> 适用于全新部署与已有部署升级。脚本会自动安装 Docker 运行环境，并使用源码构建镜像（天然兼容 x86/ARM）。
+
+### 一键安装（自动安装环境 + 部署面板）
+
+~~~bash
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/install.sh | bash
+~~~
+
+可选自定义参数（示例：改端口、目录、时区）：
+
+~~~bash
+PORT=5001 APP_DIR=/root/netcup-monitor TZ=Asia/Shanghai \
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/install.sh | bash
+~~~
+
+### 一键升级（已部署用户）
+
+~~~bash
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/upgrade.sh | bash
+~~~
+
+升级脚本会自动备份 `data/config.json` 到 `backups/` 后再拉取代码并重建容器。
+
 <h2 id="features">✨ 功能特性</h2>
 
 ### 🛡️ 智能流控策略

@@ -27,6 +27,31 @@
 
 不同于普通的监控脚本，本项目通过对接 Netcup 官方 SOAP API 精准识别服务器状态。当检测到限速时，它能自动指挥 **qBittorrent** 和 **Vertex** 进行精细化的流量规避，保证服务器快速恢复高速状态，并在限速解除后自动恢复生产，实现真正的“无人值守”。
 
+## ⚡ 一键安装 / 一键升级（Ubuntu/Debian，支持 x86/ARM）
+
+> 适用于全新部署与已有部署升级。脚本会自动安装 Docker 运行环境，并使用源码构建镜像（天然兼容 x86/ARM）。
+
+### 一键安装（自动安装环境 + 部署面板）
+
+~~~bash
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/install.sh | bash
+~~~
+
+可选自定义参数（示例：改端口、目录、时区）：
+
+~~~bash
+PORT=5001 APP_DIR=/root/netcup-monitor TZ=Asia/Shanghai \
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/install.sh | bash
+~~~
+
+### 一键升级（已部署用户）
+
+~~~bash
+curl -fsSL https://raw.githubusercontent.com/laijunquan216/netcup-monitor/main/scripts/upgrade.sh | bash
+~~~
+
+升级脚本会自动备份 `data/config.json` 到 `backups/` 后再拉取代码并重建容器。
+
 <h2 id="features">✨ 功能特性</h2>
 
 ### 🛡️ 智能流控策略
@@ -156,7 +181,12 @@ docker compose up -d --force-recreate
 * **HR 保护分类**：填写如 `HR, VIP`。
 * **限速上传限制**：设置限速期间 HR 种子的最大上传速度（KB/s），防止长时间无流量被站点判定为不再做种。
 
-### 4. 实例配置 (Servers)
+### 4. 配置迁移（导出/恢复）
+在“全局设置 -> 配置迁移”中可一键导出并恢复：
+* **配置参数**：账号、策略、通知、实例等全部配置。
+* **监控历史**：流量统计与体质分析所依赖的历史数据（数据库内容）。
+
+### 5. 实例配置 (Servers)
 添加你需要监控的 VPS 实例：
 * **名称**：自定义别名。
 * **IP 地址**：必须与 Netcup 后台显示的 IP 一致（用于匹配 API 数据）。

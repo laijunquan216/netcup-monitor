@@ -62,6 +62,69 @@ def init_db():
 
 init_db()
 
+def export_monitor_data():
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, server_name, timestamp, up_total, dl_total, state FROM traffic_log ORDER BY id ASC")
+        traffic_rows = [dict(r) for r in c.fetchall()]
+        c.execute("SELECT id, server_name, start_time, end_time, state, duration FROM state_events ORDER BY id ASC")
+        event_rows = [dict(r) for r in c.fetchall()]
+        conn.close()
+        return {"traffic_log": traffic_rows, "state_events": event_rows}
+    except Exception as e:
+        logger.error(f"导出监控数据失败: {e}")
+        return {"traffic_log": [], "state_events": []}
+
+def import_monitor_data(monitor_data):
+    if not isinstance(monitor_data, dict):
+        return
+    traffic_rows = monitor_data.get("traffic_log", [])
+    event_rows = monitor_data.get("state_events", [])
+    if not isinstance(traffic_rows, list) or not isinstance(event_rows, list):
+        return
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("DELETE FROM traffic_log")
+        c.execute("DELETE FROM state_events")
+
+        for row in traffic_rows:
+            if not isinstance(row, dict):
+                continue
+            c.execute(
+                "INSERT INTO traffic_log (id, server_name, timestamp, up_total, dl_total, state) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    row.get("id"),
+                    row.get("server_name"),
+                    row.get("timestamp"),
+                    row.get("up_total"),
+                    row.get("dl_total"),
+                    row.get("state"),
+                ),
+            )
+
+        for row in event_rows:
+            if not isinstance(row, dict):
+                continue
+            c.execute(
+                "INSERT INTO state_events (id, server_name, start_time, end_time, state, duration) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    row.get("id"),
+                    row.get("server_name"),
+                    row.get("start_time"),
+                    row.get("end_time"),
+                    row.get("state"),
+                    row.get("duration"),
+                ),
+            )
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"导入监控数据失败: {e}")
+
 # ===================== 工具函数 =====================
 def load_config():
     try:
@@ -279,6 +342,60 @@ def handle_config():
         return jsonify({"status": "success"})
     if not session.get('logged_in'): return jsonify({})
     return jsonify(load_config())
+
+@app.route('/api/config/export')
+def export_config():
+    if not session.get('logged_in'):
+        return jsonify({"status": "error"}), 401
+    try:
+        cfg = load_config()
+        payload = {
+            "_schema": "netcup-monitor-export-v1",
+            "exported_at": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "config": cfg,
+            "monitor_data": export_monitor_data()
+        }
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        return app.response_class(
+            response=json.dumps(payload, ensure_ascii=False, indent=2),
+            mimetype='application/json',
+            headers={"Content-Disposition": f'attachment; filename="netcup-monitor-config-{ts}.json"'}
+        )
+    except Exception as e:
+        logger.error(f"导出配置失败: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/config/import', methods=['POST'])
+def import_config():
+    if not session.get('logged_in'):
+        return jsonify({"status": "error"}), 401
+    try:
+        payload = request.json
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "配置文件格式无效"}), 400
+
+        if payload.get("_schema") == "netcup-monitor-export-v1" and isinstance(payload.get("config"), dict):
+            new_c = payload.get("config")
+            monitor_data = payload.get("monitor_data")
+        else:
+            new_c = payload
+            monitor_data = None
+
+        if new_c.get('admin_password'):
+            new_c['admin_password_hash'] = hash_password(new_c['admin_password'])
+            del new_c['admin_password']
+        elif 'admin_password_hash' not in new_c:
+            old = load_config()
+            if 'admin_password_hash' in old:
+                new_c['admin_password_hash'] = old['admin_password_hash']
+
+        save_config_file(new_c)
+        if monitor_data is not None:
+            import_monitor_data(monitor_data)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logger.error(f"导入配置失败: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/run_now', methods=['POST'])
 def manual_run():

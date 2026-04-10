@@ -280,6 +280,46 @@ def handle_config():
     if not session.get('logged_in'): return jsonify({})
     return jsonify(load_config())
 
+@app.route('/api/config/export')
+def export_config():
+    if not session.get('logged_in'):
+        return jsonify({"status": "error"}), 401
+    try:
+        cfg = load_config()
+        ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        return app.response_class(
+            response=json.dumps(cfg, ensure_ascii=False, indent=2),
+            mimetype='application/json',
+            headers={"Content-Disposition": f'attachment; filename="netcup-monitor-config-{ts}.json"'}
+        )
+    except Exception as e:
+        logger.error(f"导出配置失败: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/config/import', methods=['POST'])
+def import_config():
+    if not session.get('logged_in'):
+        return jsonify({"status": "error"}), 401
+    try:
+        payload = request.json
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "配置文件格式无效"}), 400
+
+        new_c = payload
+        if new_c.get('admin_password'):
+            new_c['admin_password_hash'] = hash_password(new_c['admin_password'])
+            del new_c['admin_password']
+        elif 'admin_password_hash' not in new_c:
+            old = load_config()
+            if 'admin_password_hash' in old:
+                new_c['admin_password_hash'] = old['admin_password_hash']
+
+        save_config_file(new_c)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logger.error(f"导入配置失败: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/run_now', methods=['POST'])
 def manual_run():
     if not session.get('logged_in'): return jsonify({"status": "error"}), 401
